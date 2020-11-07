@@ -10,7 +10,7 @@ from keras.models import Model, Sequential
 #metrics + sklearn
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
-from scipy import stats
+from scipy import stats, spatial
 
 def remove_regex(df, regex_):
     df1 = df.copy()
@@ -130,12 +130,10 @@ rear_imp = rearrange_rows(indep_vars)
 X_ls = []
 y_ls = []
 for i in rear_imp:
-    X, y = split_sequence(i)
+    X, y = split_sequence(i, 5)
     if y.shape[0] != 0:
         X_ls.append(X)
         y_ls.append(y)
-    else:
-        print(y.shape)
 
 dep_vars_ls = y_ls
 indep_vars_ls =X_ls
@@ -147,9 +145,7 @@ scaler = MinMaxScaler(feature_range=(0, 1))
 y = scaler.fit_transform(y)
 y = np.where(np.isnan(y),0,y)
 
-# normalize the dataset
 X1 = np.vstack(indep_vars_ls)
-
 X = X1.reshape(X1.shape[0]*X1.shape[1],X1.shape[2])
 scaler = MinMaxScaler(feature_range=(0, 1))
 X = scaler.fit_transform(X)
@@ -165,7 +161,7 @@ random = 4
 np.random.seed(random)
 tf.compat.v1.random.set_random_seed(random)
 
-learn = 0.01
+learn = 0.001
 opt = tf.optimizers.Adam(lr= learn, amsgrad = True)
 
 loss_fctn = 'mean_squared_error'
@@ -183,7 +179,7 @@ model.add(LSTM(200, activation=activ_h, kernel_initializer = KI_h, recurrent_dro
 model.add(Dense(X.shape[2], input_shape=(n_steps, n_features), activation=activ_d))
 model.compile(loss=loss_fctn, optimizer=opt,  metrics=['acc', 'mae', 'msle', 'mse'])
 
-history = model.fit(X_train, y_train,  batch_size=25, epochs= 500, verbose=1, validation_split = 0.2)
+history = model.fit(X_train, y_train,  batch_size=25, epochs= 2000, verbose=0, validation_split = 0.2)
 
 
 y_hat = model.predict(X_test, verbose=0)
