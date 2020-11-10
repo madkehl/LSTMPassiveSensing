@@ -7,6 +7,7 @@ import tensorflow as tf
 from tensorflow import keras
 from keras.layers import Dense, LSTM
 from keras.models import Model, Sequential
+from attention_decoder import AttentionDecoder
 #metrics + sklearn
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
@@ -176,10 +177,11 @@ model = Sequential()
 model.add(LSTM(300, activation=activ_h, kernel_initializer = KI_h, return_sequences = True, recurrent_dropout = rdo, dropout = do, input_shape=(n_steps, n_features)))
 model.add(LSTM(300, activation=activ_h, kernel_initializer = KI_h,  return_sequences = True, recurrent_dropout = rdo,  dropout = do, input_shape=(n_steps, n_features)))
 model.add(LSTM(300, activation=activ_h, kernel_initializer = KI_h, recurrent_dropout = rdo, dropout = do,  input_shape=(n_steps, n_features)))
+model.add(AttentionDecoder(300, n_features))
 model.add(Dense(X.shape[2], input_shape=(n_steps, n_features), activation=activ_d))
 model.compile(loss=loss_fctn, optimizer=opt,  metrics=['acc', 'mae', 'msle', 'mse'])
 
-history = model.fit(X_train, y_train,  batch_size=25, epochs= 200, verbose=0, validation_split = 0.2)
+history = model.fit(X_train, y_train,  batch_size=25, epochs= 20, verbose=0, validation_split = 0.2)
 print(history)
 
 y_hat = model.predict(X_test, verbose=0)
