@@ -130,7 +130,7 @@ rear_imp = rearrange_rows(indep_vars)
 X_ls = []
 y_ls = []
 for i in rear_imp:
-    X, y = split_sequence(i, 5)
+    X, y = split_sequence(i, 4)
     if y.shape[0] != 0:
         X_ls.append(X)
         y_ls.append(y)
@@ -156,31 +156,31 @@ X = np.where(np.isnan(X),0,X)
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=0)
 
-random = 4
+random = 6
 
 np.random.seed(random)
 tf.compat.v1.random.set_random_seed(random)
 
-learn = 0.001
+learn = 0.0001
 opt = tf.optimizers.Adam(lr= learn, amsgrad = True)
 
 loss_fctn = 'mean_squared_error'
-activ_h = 'tanh'  #selu, tanh
-KI_h = 'glorot_uniform'
+activ_h = 'selu'  #selu, tanh
+KI_h = 'lecun_uniform'
 activ_d = 'sigmoid'
 n_steps, n_features = X.shape[1], X.shape[2]
 do = 0.3
 rdo= 0.3
 
 model = Sequential()
-model.add(LSTM(200, activation=activ_h, kernel_initializer = KI_h, return_sequences = True, recurrent_dropout = rdo, dropout = do, input_shape=(n_steps, n_features)))
-model.add(LSTM(200, activation=activ_h, kernel_initializer = KI_h,  return_sequences = True, recurrent_dropout = rdo,  dropout = do, input_shape=(n_steps, n_features)))
-model.add(LSTM(200, activation=activ_h, kernel_initializer = KI_h, recurrent_dropout = rdo, dropout = do,  input_shape=(n_steps, n_features)))
+model.add(LSTM(300, activation=activ_h, kernel_initializer = KI_h, return_sequences = True, recurrent_dropout = rdo, dropout = do, input_shape=(n_steps, n_features)))
+model.add(LSTM(300, activation=activ_h, kernel_initializer = KI_h,  return_sequences = True, recurrent_dropout = rdo,  dropout = do, input_shape=(n_steps, n_features)))
+model.add(LSTM(300, activation=activ_h, kernel_initializer = KI_h, recurrent_dropout = rdo, dropout = do,  input_shape=(n_steps, n_features)))
 model.add(Dense(X.shape[2], input_shape=(n_steps, n_features), activation=activ_d))
 model.compile(loss=loss_fctn, optimizer=opt,  metrics=['acc', 'mae', 'msle', 'mse'])
 
-history = model.fit(X_train, y_train,  batch_size=25, epochs= 2000, verbose=0, validation_split = 0.2)
-
+history = model.fit(X_train, y_train,  batch_size=25, epochs= 200, verbose=0, validation_split = 0.2)
+print(history)
 
 y_hat = model.predict(X_test, verbose=0)
 accs, accsR = get_accsr(y_test, y_hat)
