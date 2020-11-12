@@ -69,7 +69,7 @@ rear_imp = rearrange_rows(indep_vars)
 X_ls = []
 y_ls = []
 for i in rear_imp:
-    X, y = split_sequence(i, 4)
+    X, y = split_sequence(i, 1)
     if y.shape[0] != 0:
         X_ls.append(X)
         y_ls.append(y)
@@ -89,12 +89,12 @@ X = X1.reshape(X1.shape[0]*X1.shape[1],X1.shape[2])
 scaler = MinMaxScaler(feature_range=(0, 1))
 X = scaler.fit_transform(X)
 
-X = X.reshape(X1.shape[0], X1.shape[1],X1.shape[2])
+#X = X.reshape(X1.shape[0], X1.shape[1],X1.shape[2])
 X = np.where(np.isnan(X),0,X)
 #[samples, timesteps, features]
-
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=0)
-
+print(y_train.shape)
+print(X_train.shape)
 random = 6
 
 np.random.seed(random)
@@ -104,21 +104,46 @@ learn = 0.0001
 opt = tf.optimizers.Adam(lr= learn, amsgrad = True)
 
 loss_fctn = 'mean_squared_error'
-activ_h = 'selu'  #selu, tanh
-KI_h = 'lecun_uniform'
 activ_d = 'sigmoid'
-n_steps, n_features = X.shape[1], X.shape[2]
-do = 0.3
-rdo= 0.3
+n_steps, n_features = X.shape[0], X.shape[1]
 
-model = Sequential()
-model.add(LSTM(300, activation=activ_h, kernel_initializer = KI_h, return_sequences = True, recurrent_dropout = rdo, dropout = do, input_shape=(n_steps, n_features)))
-model.add(LSTM(300, activation=activ_h, kernel_initializer = KI_h,  return_sequences = True, recurrent_dropout = rdo,  dropout = do, input_shape=(n_steps, n_features)))
-model.add(LSTM(300, activation=activ_h, kernel_initializer = KI_h, recurrent_dropout = rdo, dropout = do,  input_shape=(n_steps, n_features)))
-model.add(Dense(X.shape[2], input_shape=(n_steps, n_features), activation=activ_d))
+#Expected shape of input vec,
+#expected shape of output vec
+query_input = tf.keras.Input(shape=(X.shape[1],), dtype='int32')
+value_input = tf.keras.Input(shape=(X.shape[1],), dtype='int32')
+
+# Embedding lookup.
+token_embedding = tf.keras.layers.Embedding(input_dim=1000, output_dim=64)
+query_embeddings = token_embedding(query_input)
+value_embeddings = token_embedding(value_input)
+
+# CNN layer.
+lstm_layer = tf.keras.layers.LSTM(200, return_sequences = True)
+# Query encoding of shape [batch_size, Tq, filters].
+query_seq_encoding = lstm_layer(query_embeddings)
+# Value encoding of shape [batch_size, Tv, filters].
+value_seq_encoding = lstm_layer(value_embeddings)
+
+# Query-value attention of shape [batch_size, Tq, filters].
+query_value_attention_seq = tf.keras.layers.Attention()(
+    [query_seq_encoding, value_seq_encoding])
+
+# Reduce over the sequence axis to produce encodings of shape
+# [batch_size, filters].
+query_encoding = tf.keras.layers.GlobalAveragePooling1D()(
+    query_seq_encoding)
+query_value_attention = tf.keras.layers.GlobalAveragePooling1D()(
+    query_value_attention_seq)
+
+# Concatenate query and document encodings to produce a DNN input layer.
+input_layer = tf.keras.layers.Concatenate()([query_encoding, query_value_attention])
+
+layer_2 = Dense(X.shape[1], input_shape=(n_steps, n_features), activation=activ_d)(input_layer)
+
+model = Model([query_input, value_input], [layer_2])
 model.compile(loss=loss_fctn, optimizer=opt,  metrics=['acc', 'mae', 'msle', 'mse'])
 
-history = model.fit(X_train, y_train,  batch_size=25, epochs= 20, verbose=0, validation_split = 0.2)
+history = model.fit([X_train, y_train], epochs= 20, verbose=0, validation_split = 0.2)
 print(history)
 
 y_hat = model.predict(X_test, verbose=0)
