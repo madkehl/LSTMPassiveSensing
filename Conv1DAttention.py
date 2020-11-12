@@ -105,12 +105,12 @@ def scaled_split(winsorized, random):
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=random)
     print(y_train.shape)
     print(X_train.shape)
-    return X_train, X_test, y_train, y_test
+    return X, y, X_train, X_test, y_train, y_test
 
 winsorized = pd.read_csv('./winsorized.csv', index_col = 0)
 random = 6
 
-X_train, X_test, y_train, y_test = scaled_split(winsorized, random)
+X, y, X_train, X_test, y_train, y_test = scaled_split(winsorized, random)
 
 
 np.random.seed(random)
