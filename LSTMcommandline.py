@@ -121,6 +121,6 @@ model.compile(loss=loss_fctn, optimizer=opt,  metrics=['acc', 'mae', 'msle', 'ms
 history = model.fit(X_train, y_train,  batch_size=25, epochs= 20, verbose=0, validation_split = 0.2)
 print(history)
 
-y_hat = model.predict(X_test, verbose=0)
+y_hat = model.predict([X_test, X_test], verbose=0)
 accs, accsR = get_accsr(y_test, y_hat)
 
