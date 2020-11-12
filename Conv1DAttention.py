@@ -15,6 +15,9 @@ from scipy import stats, spatial
 import pydot
 import graphviz
 
+from keras.callbacks import History
+hist = History()
+
 def rearrange_rows(sequence):
     pad_imp = []
     for i in sequence:
@@ -55,50 +58,60 @@ def get_accsr(y_test, y_pred):
     print('Median random:' + str(np.median(accsR)))
     return(accs, accsR)
 
-winsorized = pd.read_csv('./winsorized.csv', index_col = 0)
-winsorizedgb = winsorized.groupby('participantID')
-sequences_win = []
 
-for i in list(set(winsorized['participantID'])):
-    unit = winsorizedgb.get_group(i)
-    sequences_win.append(unit.reset_index(drop = False))
+def lstm_prep(winsorized):
+    winsorizedgb = winsorized.groupby('participantID')
+    sequences_win = []
+
+    for i in list(set(winsorized['participantID'])):
+        unit = winsorizedgb.get_group(i)
+        sequences_win.append(unit.reset_index(drop = False))
     
-indep_vars = [i.drop(['participantID'], axis = 1) for i in sequences_win]
+    indep_vars = [i.drop(['participantID'], axis = 1) for i in sequences_win]
 
-rear_imp = rearrange_rows(indep_vars)
+    rear_imp = rearrange_rows(indep_vars)
 
-X_ls = []
-y_ls = []
-for i in rear_imp:
-    X, y = split_sequence(i, 3)
-    if y.shape[0] != 0:
-        X_ls.append(X)
-        y_ls.append(y)
+    X_ls = []
+    y_ls = []
+    for i in rear_imp:
+        X, y = split_sequence(i, 3)
+        if y.shape[0] != 0:
+            X_ls.append(X)
+            y_ls.append(y)
 
-dep_vars_ls = y_ls
-indep_vars_ls =X_ls
+    dep_vars_ls = y_ls
+    indep_vars_ls =X_ls
+    return dep_vars_ls, indep_vars_ls
 
+def scaled_split(winsorized, random):
+    dep_vars_ls, indep_vars_ls = lstm_prep(winsorized)
 
 # normalize the dataset
-y = np.vstack(dep_vars_ls)
-scaler = MinMaxScaler(feature_range=(0, 1))
-y = scaler.fit_transform(y)
-y = np.where(np.isnan(y),0,y)
+    y = np.vstack(dep_vars_ls)
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    y = scaler.fit_transform(y)
+    y = np.where(np.isnan(y),0,y)
 
 
-X1 = np.vstack(indep_vars_ls)
-y = y.reshape(X1.shape[0], 1,X1.shape[2])
-X = X1.reshape(X1.shape[0]*X1.shape[1],X1.shape[2])
-scaler = MinMaxScaler(feature_range=(0, 1))
-X = scaler.fit_transform(X)
-X = X1.reshape(X1.shape[0], X1.shape[1],X1.shape[2])
+    X1 = np.vstack(indep_vars_ls)
+    y = y.reshape(X1.shape[0], 1,X1.shape[2])
+    X = X1.reshape(X1.shape[0]*X1.shape[1],X1.shape[2])
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    X = scaler.fit_transform(X)
+    X = X1.reshape(X1.shape[0], X1.shape[1],X1.shape[2])
 
-X = np.where(np.isnan(X),0,X)
+    X = np.where(np.isnan(X),0,X)
 #[samples, timesteps, features]
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=0)
-print(y_train.shape)
-print(X_train.shape)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=random)
+    print(y_train.shape)
+    print(X_train.shape)
+    return X_train, X_test, y_train, y_test
+
+winsorized = pd.read_csv('./winsorized.csv', index_col = 0)
 random = 6
+
+X_train, X_test, y_train, y_test = scaled_split(winsorized, random)
+
 
 np.random.seed(random)
 tf.compat.v1.random.set_random_seed(random)
@@ -147,9 +160,9 @@ model.compile(loss=loss_fctn, optimizer=opt,  metrics=['acc', 'mae', 'msle', 'ms
 
 history = model.fit(x = [X_train, X_train], y = y_train,                    
                     validation_data=([X_test, X_test], y_test),
-                    epochs= 20, verbose=0, validation_split = 0.2)
-print(history)
+                    epochs= 50, verbose=1, validation_split = 0.2)
+print(hist.history)
 
-y_hat = model.predict(X_test, verbose=0)
+y_hat = model.predict([X_test, X_test], verbose=0)
 accs, accsR = get_accsr(y_test, y_hat)
-
+print(accs,accsR)
