@@ -12,11 +12,7 @@ from attention_decoder import AttentionDecoder
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from scipy import stats, spatial
-import pydot
-import graphviz
 
-from keras.callbacks import History
-hist = History()
 
 def rearrange_rows(sequence):
     pad_imp = []
@@ -49,6 +45,9 @@ def get_cos(dft, dfp):
 def get_accsr(y_test, y_pred):
     
     y_test = np.array(y_test)
+    if len(y_test.shape) > 2:
+        y_test = y_test.reshape(y_test.shape[0]*y_test.shape[1], y_test.shape[2])
+        y_pred = y_pred.reshape(y_pred.shape[0]*y_pred.shape[1], y_pred.shape[2])
     accs = get_cos(y_test, y_pred)
     print('Median exp:' + str(np.median(accs)))
 
@@ -59,7 +58,7 @@ def get_accsr(y_test, y_pred):
     return(accs, accsR)
 
 
-def lstm_prep(winsorized):
+def lstm_prep(winsorized, n_steps):
     winsorizedgb = winsorized.groupby('participantID')
     sequences_win = []
 
@@ -74,7 +73,7 @@ def lstm_prep(winsorized):
     X_ls = []
     y_ls = []
     for i in rear_imp:
-        X, y = split_sequence(i, 3)
+        X, y = split_sequence(i, n_steps)
         if y.shape[0] != 0:
             X_ls.append(X)
             y_ls.append(y)
@@ -83,8 +82,8 @@ def lstm_prep(winsorized):
     indep_vars_ls =X_ls
     return dep_vars_ls, indep_vars_ls
 
-def scaled_split(winsorized, random):
-    dep_vars_ls, indep_vars_ls = lstm_prep(winsorized)
+def scaled_split(winsorized, random, n_steps):
+    dep_vars_ls, indep_vars_ls = lstm_prep(winsorized, n_steps)
 
 # normalize the dataset
     y = np.vstack(dep_vars_ls)
@@ -108,61 +107,77 @@ def scaled_split(winsorized, random):
     return X, y, X_train, X_test, y_train, y_test
 
 winsorized = pd.read_csv('./winsorized.csv', index_col = 0)
-random = 6
-
-X, y, X_train, X_test, y_train, y_test = scaled_split(winsorized, random)
 
 
-np.random.seed(random)
-tf.compat.v1.random.set_random_seed(random)
+def create_attentionLSTM(winsorized, random, n_steps, learn, activ_h, KI_h, loss_fctn, size_dense, size_lstm, epochs):
+    
+    opt = tf.optimizers.Adam(lr= learn, amsgrad = True)
+    activ_d = 'sigmoid'
+    
+    X, y, X_train, X_test, y_train, y_test = scaled_split(winsorized, random, n_steps)
+    
+    np.random.seed(random)
+    tf.compat.v1.random.set_random_seed(random)
 
-learn = 0.0001
-opt = tf.optimizers.Adam(lr= learn, amsgrad = True)
-activ_h = 'selu'
-KI_h = 'lecun_uniform'
-loss_fctn = 'mean_squared_error'
-activ_d = 'sigmoid'
-n_steps, n_features = X.shape[1], X.shape[2]
+    n_steps, n_features = X.shape[1], X.shape[2]
 
-#Expected shape of input vec,
-#expected shape of output vec
-query_input = tf.keras.layers.Input(shape = (n_steps, n_features), dtype='int32')
-value_input = tf.keras.layers.Input(shape=(n_steps, n_features), dtype='int32')
+    query_input = tf.keras.layers.Input(shape = (n_steps, n_features), dtype='int32')
+    value_input = tf.keras.layers.Input(shape=(n_steps, n_features), dtype='int32')
 
-# Embedding lookup.
-#token_embedding = tf.keras.layers.Embedding(input_dim=1000, output_dim=64)
+    query_embeddings = Dense(size_dense, input_shape=(n_steps, n_features), activation=activ_h, kernel_initializer=KI_h)(query_input)
+    value_embeddings = Dense(size_dense, input_shape=(n_steps, n_features), activation=activ_h, kernel_initializer=KI_h)(value_input)
+    #okay to reuse layer here, not above
+    lstm_layer = tf.keras.layers.LSTM(size_lstm, return_sequences = True)
+    query_seq_encoding = lstm_layer(query_embeddings)
+    value_seq_encoding = lstm_layer(value_embeddings)
 
-query_embeddings =Dense(100, input_shape=(n_steps, n_features), activation=activ_h, kernel_initializer=KI_h)(query_input)
-value_embeddings =Dense(100, input_shape=(n_steps, n_features), activation=activ_h, kernel_initializer=KI_h)(value_input)
+    query = Model(inputs=query_input, outputs=query_seq_encoding)
+    value = Model(inputs=value_input, outputs=value_seq_encoding)
 
-# CNN layer.
-lstm_layer = tf.keras.layers.LSTM(200, return_sequences = True)
-query_seq_encoding = lstm_layer(query_embeddings)
-value_seq_encoding = lstm_layer(value_embeddings)
+    # Query-value attention of shape [batch_size, Tq, filters].
+    query_value_attention_seq = tf.keras.layers.Attention(25)([query_seq_encoding, value_seq_encoding])
 
+    # Concatenate query and document encodings to produce a DNN input layer.
+    input_layer = tf.keras.layers.Concatenate()([query.output, query_value_attention_seq])
+    layer_2 = Dense(n_features, activation=activ_d)(input_layer)
 
-query = Model(inputs=query_input, outputs=query_seq_encoding)
-value = Model(inputs=value_input, outputs=value_seq_encoding)
+    model = Model([query.input, value.input], layer_2)
+    model.summary()
 
+    model.compile(loss=loss_fctn, optimizer=opt,  metrics=['acc', 'mae', 'msle', 'mse'])
 
-
-# Query-value attention of shape [batch_size, Tq, filters].
-query_value_attention_seq = tf.keras.layers.Attention(25)([query_seq_encoding, value_seq_encoding])
-
-# Concatenate query and document encodings to produce a DNN input layer.
-input_layer = tf.keras.layers.Concatenate()([query.output, query_value_attention_seq])
-layer_2 = Dense(n_features, activation=activ_d)(input_layer)
-
-model = Model([query.input, value.input], layer_2)
-model.summary()
-
-model.compile(loss=loss_fctn, optimizer=opt,  metrics=['acc', 'mae', 'msle', 'mse'])
-
-history = model.fit(x = [X_train, X_train], y = y_train,                    
+    model.fit(x = [X_train, X_train], y = y_train,                    
                     validation_data=([X_test, X_test], y_test),
-                    epochs= 50, verbose=1, validation_split = 0.2)
-print(hist.history)
+                    epochs= epochs, verbose=0, validation_split = 0.2)
+    return(model)
 
-y_hat = model.predict([X_test, X_test], verbose=0)
-accs, accsR = get_accsr(y_test, y_hat)
-print(accs,accsR)
+
+
+def main():
+    random = int(input('Select a random seed: '))
+    n_steps = int(input('Select # of steps: '))
+    learn = float(input('Specify learning rate: '))
+    activ_h = input('Specify dense activation function: ')
+    if activ_h == 'selu':
+        KI_h = 'lecun_uniform'
+    elif activ_h == 'relu':
+        KI_h = 'he_uniform'
+    elif activ_h == 'tanh':
+        KI_h = 'glorot_uniform'
+    loss_fctn = input('Specify loss function: ')
+    size_dense = int(input('Size of Dense layers: '))
+    size_lstm = int(input('Size of LSTM layer: '))
+    epochs = int(input('Epochs: '))
+
+    model = create_attentionLSTM(winsorized, random, n_steps, learn, activ_h, KI_h, loss_fctn, size_dense, size_lstm, epochs)
+    vy = model.history.history['val_loss']
+    ty = model.history.history['loss']
+    print(vy, ty)
+    y_hat = model.predict([X_test, X_test], verbose=0)
+    accs, accsR = get_accsr(y_test, y_hat)
+    print(accs,accsR)
+    return
+    
+
+if __name__ == "__main__":
+    main()
