@@ -12,7 +12,8 @@ from attention_decoder import AttentionDecoder
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from scipy import stats, spatial
-
+import pydot
+import graphviz
 
 def rearrange_rows(sequence):
     pad_imp = []
@@ -69,7 +70,7 @@ rear_imp = rearrange_rows(indep_vars)
 X_ls = []
 y_ls = []
 for i in rear_imp:
-    X, y = split_sequence(i, 1)
+    X, y = split_sequence(i, 3)
     if y.shape[0] != 0:
         X_ls.append(X)
         y_ls.append(y)
@@ -84,12 +85,14 @@ scaler = MinMaxScaler(feature_range=(0, 1))
 y = scaler.fit_transform(y)
 y = np.where(np.isnan(y),0,y)
 
+
 X1 = np.vstack(indep_vars_ls)
+y = y.reshape(X1.shape[0], 1,X1.shape[2])
 X = X1.reshape(X1.shape[0]*X1.shape[1],X1.shape[2])
 scaler = MinMaxScaler(feature_range=(0, 1))
 X = scaler.fit_transform(X)
+X = X1.reshape(X1.shape[0], X1.shape[1],X1.shape[2])
 
-#X = X.reshape(X1.shape[0], X1.shape[1],X1.shape[2])
 X = np.where(np.isnan(X),0,X)
 #[samples, timesteps, features]
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=0)
@@ -102,48 +105,49 @@ tf.compat.v1.random.set_random_seed(random)
 
 learn = 0.0001
 opt = tf.optimizers.Adam(lr= learn, amsgrad = True)
-
+activ_h = 'selu'
+KI_h = 'lecun_uniform'
 loss_fctn = 'mean_squared_error'
 activ_d = 'sigmoid'
-n_steps, n_features = X.shape[0], X.shape[1]
+n_steps, n_features = X.shape[1], X.shape[2]
 
 #Expected shape of input vec,
 #expected shape of output vec
-query_input = tf.keras.Input(shape=(X.shape[1],), dtype='int32')
-value_input = tf.keras.Input(shape=(X.shape[1],), dtype='int32')
+query_input = tf.keras.layers.Input(shape = (n_steps, n_features), dtype='int32')
+value_input = tf.keras.layers.Input(shape=(n_steps, n_features), dtype='int32')
 
 # Embedding lookup.
-token_embedding = tf.keras.layers.Embedding(input_dim=1000, output_dim=64)
-query_embeddings = token_embedding(query_input)
-value_embeddings = token_embedding(value_input)
+#token_embedding = tf.keras.layers.Embedding(input_dim=1000, output_dim=64)
+
+query_embeddings =Dense(100, input_shape=(n_steps, n_features), activation=activ_h, kernel_initializer=KI_h)(query_input)
+value_embeddings =Dense(100, input_shape=(n_steps, n_features), activation=activ_h, kernel_initializer=KI_h)(value_input)
 
 # CNN layer.
 lstm_layer = tf.keras.layers.LSTM(200, return_sequences = True)
-# Query encoding of shape [batch_size, Tq, filters].
 query_seq_encoding = lstm_layer(query_embeddings)
-# Value encoding of shape [batch_size, Tv, filters].
 value_seq_encoding = lstm_layer(value_embeddings)
 
-# Query-value attention of shape [batch_size, Tq, filters].
-query_value_attention_seq = tf.keras.layers.Attention()(
-    [query_seq_encoding, value_seq_encoding])
 
-# Reduce over the sequence axis to produce encodings of shape
-# [batch_size, filters].
-query_encoding = tf.keras.layers.GlobalAveragePooling1D()(
-    query_seq_encoding)
-query_value_attention = tf.keras.layers.GlobalAveragePooling1D()(
-    query_value_attention_seq)
+query = Model(inputs=query_input, outputs=query_seq_encoding)
+value = Model(inputs=value_input, outputs=value_seq_encoding)
+
+
+
+# Query-value attention of shape [batch_size, Tq, filters].
+query_value_attention_seq = tf.keras.layers.Attention(25)([query_seq_encoding, value_seq_encoding])
 
 # Concatenate query and document encodings to produce a DNN input layer.
-input_layer = tf.keras.layers.Concatenate()([query_encoding, query_value_attention])
+input_layer = tf.keras.layers.Concatenate()([query.output, query_value_attention_seq])
+layer_2 = Dense(n_features, activation=activ_d)(input_layer)
 
-layer_2 = Dense(X.shape[1], input_shape=(n_steps, n_features), activation=activ_d)(input_layer)
+model = Model([query.input, value.input], layer_2)
+model.summary()
 
-model = Model([query_input, value_input], [layer_2])
 model.compile(loss=loss_fctn, optimizer=opt,  metrics=['acc', 'mae', 'msle', 'mse'])
 
-history = model.fit([X_train, y_train], epochs= 20, verbose=0, validation_split = 0.2)
+history = model.fit(x = [X_train, X_train], y = y_train,                    
+                    validation_data=([X_test, X_test], y_test),
+                    epochs= 20, verbose=0, validation_split = 0.2)
 print(history)
 
 y_hat = model.predict(X_test, verbose=0)
