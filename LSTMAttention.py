@@ -108,7 +108,7 @@ def scaled_split(winsorized, random, n_steps):
 winsorized = pd.read_csv('./winsorized.csv', index_col = 0)
 
 
-def create_attentionLSTM(winsorized, random, n_steps, learn, rdo, do, activ_h, KI_h, loss_fctn, size_dense, size_lstm, epochs):
+def create_attentionLSTM(winsorized, random, n_steps, learn, rdo, do, activ_h, KI_h, loss_fctn, size_dense, size_lstm, epochs, batch):
     #extracting properly shaped inputs, setting seeds, setting sizes going forward
     X_train, X_test, y_train, y_test = scaled_split(winsorized, random, n_steps)
     np.random.seed(random)
@@ -145,7 +145,7 @@ def create_attentionLSTM(winsorized, random, n_steps, learn, rdo, do, activ_h, K
     
     opt = tf.optimizers.Adam(lr= learn, amsgrad = True)
     model.compile(loss=loss_fctn, optimizer=opt,  metrics=['acc', 'mae', 'msle', 'mse'])
-    history = model.fit(x = [X_train, X_train], y = y_train,                    
+    history = model.fit(x = [X_train, X_train], y = y_train, batch_size = batch,                   
                     validation_data=([X_test, X_test], y_test),
                     epochs= epochs, verbose=0, validation_split = 0.2)
     accs, accsR = test_model(model, X_train, X_test, y_train, y_test)
@@ -165,8 +165,8 @@ def main():
         n_steps = int(input('Select # of steps: '))
         learn = float(input('Specify learning rate: '))
         activ_h = input('Specify dense activation function: ')
-        rdo = float(input('Specify recurrent dropout:'))
-        do = float(input('Specify dropout'))
+        rdo = float(input('Specify recurrent dropout: '))
+        do = float(input('Specify dropout: '))
         if activ_h == 'selu':
             KI_h = 'lecun_uniform'
         elif activ_h == 'relu':
@@ -177,10 +177,11 @@ def main():
         size_dense = int(input('Size of Dense layers: '))
         size_lstm = int(input('Size of LSTM layer: '))
         epochs = int(input('Epochs: '))
+        batch = int(input('Batch size: '))
     else:
-        random, n_steps, learn, rdo, do, activ_h, KI_h, loss_fctn, size_dense, size_lstm, epochs = 5, 3, 0.001, 0.02, 0.02, 'relu', 'he_uniform', 'mean_squared_error', 200,200,30
+        random, n_steps, learn, rdo, do, activ_h, KI_h, loss_fctn, size_dense, size_lstm, epochs, batch = 5, 3, 0.001, 0.02, 0.02, 'relu', 'he_uniform', 'mean_squared_error', 200,200,30, 30
 
-    history, accs, accsR = create_attentionLSTM(winsorized, random, n_steps, learn, rdo, do, activ_h, KI_h, loss_fctn, size_dense, size_lstm, epochs)
+    history, accs, accsR = create_attentionLSTM(winsorized, random, n_steps, learn, rdo, do, activ_h, KI_h, loss_fctn, size_dense, size_lstm, epochs, batch)
     
     vy = history.history['val_acc'][len(history.history['val_acc']) - 10:len(history.history['val_acc'])]
     ty = history.history['acc'][len(history.history['val_acc']) - 10:len(history.history['val_acc'])]
