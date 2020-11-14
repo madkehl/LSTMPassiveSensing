@@ -147,7 +147,7 @@ def create_attentionLSTM(winsorized, random, n_steps, learn, rdo, do, activ_h, K
     model.compile(loss=loss_fctn, optimizer=opt,  metrics=['acc', 'mae', 'msle', 'mse'])
     history = model.fit(x = [X_train, X_train], y = y_train, batch_size = batch,                   
                     validation_data=([X_test, X_test], y_test),
-                    epochs= epochs, verbose=0, validation_split = 0.2)
+                    epochs= epochs, verbose=2, validation_split = 0.2)
     accs, accsR = test_model(model, X_train, X_test, y_train, y_test)
    # print(history.history.keys())
     return history, accs, accsR
