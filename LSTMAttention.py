@@ -137,13 +137,18 @@ def create_attentionLSTM(winsorized, random, n_steps, learn, rdo, do, activ_h, K
     value = Model(inputs=value_input, outputs=value_seq_encoding2)
 
     # Query-value attention of shape [batch_size, Tq, filters].
-    query_value_attention_seq = tf.keras.layers.Attention(25)([query_seq_encoding, value_seq_encoding])
+    query_value_attention_seq = tf.keras.layers.Attention()([query_seq_encoding, value_seq_encoding])
 
     # Concatenate query and document encodings to produce a DNN input layer.
     input_layer = tf.keras.layers.Concatenate()([query.output, query_value_attention_seq])
-    layer_2 = Dense(n_features, activation='sigmoid')(input_layer)
-
-    model = Model([query.input, value.input], layer_2)
+    
+    layer_2 = Dense(n_features*12, activation='sigmoid')(input_layer)
+    dropout = tf.keras.layers.Dropout(do)(layer_2)
+    layer_3 = Dense(n_features*3, activation='sigmoid')(dropout)
+    dropout1 = tf.keras.layers.Dropout(do)(layer_3)
+    layer_4 = Dense(n_features, activation='sigmoid')(dropout1)
+    
+    model = Model([query.input, value.input], layer_4)
     model.summary()
     
     opt = tf.optimizers.Adam(lr= learn, amsgrad = True)
