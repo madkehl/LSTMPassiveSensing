@@ -1,13 +1,13 @@
-#basic imports
+# basic imports
 import pandas as pd
 import numpy as np
 import math
-#ml stuff
+# ml stuff
 import tensorflow as tf
 from tensorflow import keras
 from keras.layers import Dense, LSTM
 from keras.models import Model, Sequential
-#metrics + sklearn
+# metrics + sklearn
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from scipy import stats, spatial
@@ -17,29 +17,32 @@ def rearrange_rows(sequence):
     pad_imp = []
     for i in sequence:
         pad_imp.append(np.array(i))
-    return(pad_imp)
+    return pad_imp
 
-def split_sequence(sequence, n_steps = 3):
+
+def split_sequence(sequence, n_steps=3):
     X, y = list(), list()
     for i in range(sequence.shape[0]):
         end_ix = i + n_steps
-        if end_ix > sequence.shape[0] -1:
+        if end_ix > sequence.shape[0] - 1:
             break
         seq_x, seq_y = sequence[i:end_ix, :], sequence[end_ix, :]
         if np.array(seq_y).shape[0] != 0:
             X.append(seq_x)
             y.append(seq_y)
     return np.array(X), np.array(y)       
-        
+
+
 def get_cos(dft, dfp):
     cos_val = []
     for i, j in enumerate(dft):
         p = dfp[i]
         dist = spatial.distance.cosine(j, p)
-        if math.isnan(dist) == False:
+        if math.isnan(dist) is False:
             cos_val.append(1 - dist)
             
-    return(cos_val)
+    return cos_val
+
 
 def get_accsr(y_test, y_pred):
     
@@ -54,18 +57,18 @@ def get_accsr(y_test, y_pred):
     np.random.shuffle(y_test)
     accsR = get_cos(y_test, y_pred)
     print('Median random:' + str(np.median(accsR)))
-    return(accs, accsR)
+    return accs, accsR
 
 
-def lstm_prep(winsorized, n_steps):
-    winsorizedgb = winsorized.groupby('participantID')
+def lstm_prep(df, n_steps):
+    df_gb = df.groupby('participantID')
     sequences_win = []
 
-    for i in list(set(winsorized['participantID'])):
-        unit = winsorizedgb.get_group(i)
-        sequences_win.append(unit.reset_index(drop = False))
+    for i in list(set(df['participantID'])):
+        unit = df_gb.get_group(i)
+        sequences_win.append(unit.reset_index(drop=False))
     
-    indep_vars = [i.drop(['participantID'], axis = 1) for i in sequences_win]
+    indep_vars = [i.drop(['participantID'], axis=1) for i in sequences_win]
 
     rear_imp = rearrange_rows(indep_vars)
 
@@ -78,27 +81,27 @@ def lstm_prep(winsorized, n_steps):
             y_ls.append(y)
 
     dep_vars_ls = y_ls
-    indep_vars_ls =X_ls
+    indep_vars_ls = X_ls
     return dep_vars_ls, indep_vars_ls
 
-def scaled_split(winsorized, random, n_steps):
-    dep_vars_ls, indep_vars_ls = lstm_prep(winsorized, n_steps)
+
+def scaled_split(df, random, n_steps):
+    dep_vars_ls, indep_vars_ls = lstm_prep(df, n_steps)
 
 # normalize the dataset
     y = np.vstack(dep_vars_ls)
     scaler = MinMaxScaler(feature_range=(0, 1))
     y = scaler.fit_transform(y)
-    y = np.where(np.isnan(y),0,y)
-
+    y = np.where(np.isnan(y), 0, y)
 
     X1 = np.vstack(indep_vars_ls)
-    y = y.reshape(X1.shape[0], 1,X1.shape[2])
-    X = X1.reshape(X1.shape[0]*X1.shape[1],X1.shape[2])
+    y = y.reshape(X1.shape[0], 1, X1.shape[2])
+    X = X1.reshape(X1.shape[0]*X1.shape[1], X1.shape[2])
     scaler = MinMaxScaler(feature_range=(0, 1))
     X = scaler.fit_transform(X)
-    X = X1.reshape(X1.shape[0], X1.shape[1],X1.shape[2])
+    X = X1.reshape(X1.shape[0], X1.shape[1], X1.shape[2])
 
-    X = np.where(np.isnan(X),0,X)
+    X = np.where(np.isnan(X), 0, X)
 #[samples, timesteps, features]
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=random)
     print(y_train.shape)
@@ -173,6 +176,9 @@ def main():
             KI_h = 'he_uniform'
         elif activ_h == 'tanh':
             KI_h = 'glorot_uniform'
+        else:
+            KI_h = 'he_uniform'
+            print('INVALID activation function')
         loss_fctn = input('Specify loss function: ')
         size_dense = int(input('Size of Dense layers: '))
         size_lstm = int(input('Size of LSTM layer: '))
